@@ -1,194 +1,139 @@
 import pyarrow.feather as feather
 import pandas as pd
 import numpy as np
-import gymnasium as gym
-from gymnasium import spaces
-import random
+from RL_IDS_env import MyEnv
+from DQN import DQNAgent
+from DDQN import DDQNAgent
+from PPO2 import PPOAgent
+from TD3 import TD3Agent
 import time
-from collections import deque
+import random
+
 import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
-from memory_profiler import profile
-from pympler import asizeof
+
 import gc
+import math
+
+random.seed(1337)
 
 def run():
     action_size = 2
     #s_clean_CIC2017
     #"bin_all_featuresCIC2017.feather"
-    #
+    # "norm_bin_allfeat_CIC2017.feather"
+    # norm_bin_31feat_CIC2017
+    #norm_6feat_CIC2017
+    # "zsore3_norm_bin_69feat_CIC2017.feather
 
-    df = pd.read_feather("binary_31features_CIC2017.feather")
+
+    #change df
+    #change save
+    #change data
+    savefile= "results/TD3_results.feather"
+    df = pd.read_feather("dataset/norm_bin_69feat_CIC2017.feather")
     env = MyEnv(df)
     del df
     gc.collect()
-    # EPISODES_array = [2000]
     batch_size = 320
-    # layerarray = [2, 3, 4, 5, 6, 7, 8, 9, 10]
-    # epsilon_array = [0.995, 0.99, 0.95, 0.90]
-    # epsilon_decay_array = [0.995, 0.99, 0.95, 0.90]
-    epsilon = 0.995
-    # epsilon_decay_array = [0.99]
-    penalty = 0
+    epsilon = 0.999
+    penalty = -10
+    reward = 1
     learn_rate = 0.001
     layer_amount = 3
-    neurons_amount = 64
+    neurons_amount = 16
     EPISODES = 2000
+    clip = 0.99 #0.99     0.2 0.4 0.6 0.8 0.9 0.99
+    crit_discount= 0.95 #0.5
     decay = 0.996
+    atk_reward = 2  #1 / 2
+    atk_penalty = -25# -25 DQN -75 PPO
 
-    train_model(layer_amount, neurons_amount, EPISODES, batch_size, epsilon, decay, env, action_size, penalty, learn_rate)
+    env.set_reward(reward,penalty)
+    env.set_atk_reward(atk_reward,atk_penalty)
 
-
-
-
-class MyEnv(gym.Env):
-    metadata = {'render.modes': ['human']}
-
-    def __init__(self, data):
-        self.action_space = spaces.Discrete(2)  # 2 possible actions
-        # self.observation_space = spaces.Discrete(1) # only one observation needed
-        # self.reward_range = (-1, 1) # rewards range from -1 to 1
-        self.data = data  # dataset
-        self.datasize = data.shape[1] - 1  # amount of features
-        self.datapoints = data.shape[0] - 1
-        self.index = 0  # index of the current data point
-        self.state = None
-        self.penalty = 0
-
-    def step(self, action):
-        label = self.data.iloc[self.index, -1]  # get label from dataset
-        if action == label:
-            reward = 1  # match, give positive reward
-            correct = 1
-        else:
-            correct = 0
-            reward = self.penalty  # not matching, give negative reward
-        self.index = random.randint(0, self.datapoints)  # move to next data point
-        # row = self.data.get_chunk(1)
-        # if row.empty:
-        #    self.done = True
-        #    return 0,0,self.done,{}
-        # self.state= row.iloc[:,1:-1].values
-        # self.label = row.iloc[:,-1:].values
-
-        self.state = self.data.iloc[self.index, :-1].values.reshape(1, self.datasize)
-        return self.state, reward, correct
-
-    def reset(self):
-        self.index = random.randint(0, self.datapoints)
-        self.state = self.data.iloc[self.index, :-1].values.reshape(1, self.datasize)
-        return self.state
+    train_model(layer_amount, neurons_amount, EPISODES, batch_size, epsilon, decay, env,action_size,
+                 learn_rate, savefile, reward,penalty,atk_reward, atk_penalty,clip,crit_discount)
 
 
-
-    def set_penalty(self, penalty):
-        self.penalty = penalty
-
-    def render(self, mode='human', close=False):
-        pass
+def train_model(layer_amount, neurons, EPISODES, batch_size, epsilon, decay, env, action_size,
+                learn_rate, savefile, the_reward, the_penalty,atk_reward,atk_penalty, clip, crit_discount):
 
 
-
-
-
-
-class DQNAgent:
-    def __init__(self, state_size, action_size, layer_amount, neurons, epsilon, decay, learn_rate):
-        self.state_size = state_size
-        self.action_size = action_size
-        self.memory = deque(maxlen=2000)
-        self.gamma = 0.99  # discount rate
-        self.epsilon = epsilon  # exploration rate
-        self.epsilon_min = 0.01
-        self.epsilon_decay = decay
-        self.learning_rate = learn_rate
-        self.model = self._build_model(layer_amount, neurons)
-
-    def _build_model(self, layer_amount, neurons):
-        model = keras.Sequential()
-        model.add(layers.Dense(neurons, input_dim=self.state_size, activation='relu'))
-        for i in range(layer_amount):
-            model.add(layers.Dense(neurons, activation='relu'))
-        model.add(layers.Dense(self.action_size, activation='linear')) # sigmoid??
-        model.compile(loss='binary_crossentropy', optimizer=keras.optimizers.Adam(learning_rate=self.learning_rate),
-                      metrics=["binary_accuracy"])
-        return model
-
-    def remember(self, state, action, reward):
-        self.memory.append((state, action, reward))
-
-    def act(self, state):
-        if np.random.rand() <= self.epsilon:
-            return random.randint(0,1)
-        tensor = tf.convert_to_tensor(state, dtype=tf.float32)
-        gc.collect()
-        return np.argmax(np.argmax(self.model(tensor)[0]))  # returns action
-
-    def replay(self, batch_size):
-
-        minibatch = random.sample(self.memory, batch_size)
-
-        for state, action, reward in minibatch:
-            target = reward + self.gamma * tf.reduce_max(self.model(state)[0])
-            target_f = self.model(state)
-            target_f = tf.tensor_scatter_nd_update(target_f, [[0, action]], [target])
-            self.model.fit(state, target_f, epochs=1, verbose=0)
-
-        if self.epsilon > self.epsilon_min:
-            self.epsilon *= self.epsilon_decay
-
-    def load(self, name):
-        self.model = tf.keras.models.load_model(name)
-
-    def save(self, name):
-        self.model.save(name)
-
-
-def train_model(layer_amount, neurons, EPISODES, batch_size, epsilon, decay, env, action_size, penalty, learn_rate):
-
-    env.set_penalty(penalty)
     progress = np.zeros(EPISODES)
+    precision_progress= np.zeros(EPISODES)
+    recall_progress= np.zeros(EPISODES)
+    f1_progress = np.zeros(EPISODES)
+
+    agent = TD3Agent(env.datasize,action_size,layer_amount-1,neurons,2000,1,0.1,1,0.2,10,learn_rate)
+    #agent = PPOAgent(env.datasize, action_size, layer_amount - 1, neurons, epsilon, decay, learn_rate, clip, crit_discount)
     start_time = time.time()
-    agent = DQNAgent(env.datasize, action_size, layer_amount - 1, neurons, epsilon, decay, learn_rate)
+
     for e in range(EPISODES):
         episode_correct = 0
+        episode_attacks= 0
+        episode_correct_attacks=0
+        false_positives = 0
         state = env.reset()
         for index in range(batch_size):
             action = agent.act(state)
-            next_state, reward, correct = env.step(action)
+            next_state, reward, correct, attack, correct_attack, false_pos = env.step(action)
             agent.remember(state, action, reward)
             state = next_state
             episode_correct += correct
-
+            episode_attacks += attack
+            episode_correct_attacks += correct_attack
+            false_positives += false_pos
 
         agent.replay(32)
+        agent.update_explore_rate(0.5 * (1 + math.cos(e / EPISODES * math.pi)))
 
 
         # print(f"batch: {batch}/{batch_amounts} acc: {batch_reward/train_batch}")
         acc = episode_correct / batch_size
-        print(f"episode: {e}/{EPISODES}, e: {agent.epsilon:.2f}, total acc: {acc} ")
-        progress[e] = acc
-        del acc
-        del state
-        del episode_correct
+        if episode_correct_attacks+false_positives != 0:
+            precision = episode_correct_attacks / (episode_correct_attacks + false_positives)
 
-        gc.collect()
-    # with open('gridresults.txt', 'a') as f:
-    #       f.write(str(tot_reward))
+        else:
+            precision = 0.0
+
+        if episode_attacks != 0:
+            recall = episode_correct_attacks / episode_attacks
+        else:
+            recall = 0.0
+        if precision + recall != 0:
+            f1_score = 2 * (precision * recall / (precision + recall))
+        else:
+            f1_score= 0.0
+
+
+        print(f"episode: {e}/{EPISODES}, e: {agent.epsilon:.2f}, total acc: {acc}   precision: {precision} recall:{recall} f1:{f1_score} got {episode_attacks}")
+        progress[e] = acc
+        precision_progress[e] = precision
+        recall_progress[e] = recall
+        f1_progress[e] = f1_score
+
+        del acc
+        del precision
+        del recall
+        del f1_score
+        if e % 50 == 0:
+            tf.keras.backend.clear_session()
+            gc.collect()
+
+
+
+
     traintime = time.time() - start_time
 
-    data = pd.read_feather("features_results.feather")
-    data.loc[len(data)] = [epsilon,decay,layer_amount, neurons, progress, traintime,EPISODES, agent.epsilon, penalty, learn_rate, env.datasize, "none"]
-    data.to_feather("features_results.feather")
-    #data = pd.read_feather("full_epsilonresults.feather")
-    #data.loc[len(data)] = [epsilon,decay,layer_amount, neurons, progress, traintime,EPISODES, agent.epsilon]
-    #data.to_feather("full_epsilonresults.feather")
+    data = pd.read_feather(savefile)
+    data.loc[len(data)] = [tau, progress, precision_progress,recall_progress,f1_progress,
+                           traintime, EPISODES, 0.0, the_reward, the_penalty, atk_reward, atk_penalty,0.001, env.datasize, "PPO"]
 
-    #agent.save(f"{epsilon}_{decay}_{layer_amount}x{neurons}_{EPISODES}_ee{agent.epsilon}.h5")
-    # data = pd.read_feather("gridresults.feather")
-    # data.loc[len(data)] = [layer_amount, neurons, progress, traintime]
-    # data.to_feather("gridresults.feather")
+    data.to_feather(savefile)
+
+
+    #agent.save(f"models/PPO_{layer_amount}x{neurons}_{EPISODES}_{env.datasize}_.h5")
+
     del agent
     del progress
     del start_time
