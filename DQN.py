@@ -5,11 +5,11 @@ import random
 from collections import deque
 import numpy as np
 class DQNAgent:
-    def __init__(self, state_size, action_size, layer_amount, neurons, epsilon, decay, learn_rate):
+    def __init__(self, state_size, action_size, layer_amount, neurons, epsilon, decay, learn_rate, discount):
         self.state_size = state_size
         self.action_size = action_size
         self.memory = deque(maxlen=2000)
-        self.gamma = 0.99  # discount rate
+        self.gamma = discount  # discount rate
         self.epsilon = epsilon  # exploration rate
         self.epsilon_min = 0.01
         self.epsilon_decay = decay
@@ -34,7 +34,7 @@ class DQNAgent:
         if np.random.rand() <= self.epsilon:
             return random.randint(0,1)
         tensor = tf.convert_to_tensor(state, dtype=tf.float32)
-        return np.argmax(self.model.predict(tensor, verbose=0, use_multiprocessing=True)[0])  # returns action
+        return np.argmax(self.model(tensor)[0])  # returns action
 
     def replay(self, batch_size):
 

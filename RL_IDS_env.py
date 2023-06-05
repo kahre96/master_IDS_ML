@@ -11,19 +11,33 @@ class MyEnv(gym.Env):
         #self.data0 = data[data[' Label'] == 0]  # dataset
         #self.data1 = data[data[' Label'] == 1]
         self.data = data
-        self.datasize = data.shape[1] - 1  # amount of features
+        self.features = data.shape[1] - 1  # amount of features
         self.datapoints = data.shape[0] - 1
         self.index = 0  # index of the current data point
         self.state = None
         self.penalty = -10
         self.reward = 1
         self.attack_reward = 100
-        self.attack_penalty = -100
+        self.attack_penalty = {1: -25,
+                               2: -25,
+                               3: -25,
+                               4: -25,
+                               5: -25,
+                               6: -25,
+                               7: -25,
+                               8: -25,
+                               9: -25,
+                               10: -25,
+                               11: -25,
+                               12: -25,
+                               13: -25,
+                               14: -25
+                               }
 
     def step(self, action):
         label = self.data.iloc[self.index, -1]  # get label from dataset
-        # FIX LABEL STATE AND INDEXX!!!!
-        if action == label:
+
+        if (action == 0 and label == 0) or (action != 0 and label != 0):
             reward = self.reward  # match, give positive reward
             correct = 1
         else:
@@ -32,27 +46,26 @@ class MyEnv(gym.Env):
 
         correct_att = 0
         false_pos=0
-        if label == 1:
+        if label != 0:
             attack = 1
             if correct == 1:
                 reward = self.attack_reward
                 correct_att = 1
             else:
                 reward = self.attack_penalty
-
-
+                #reward = self.attack_penalty[label]
         else:
             attack = 0
-            if action == 1:
+            if action != 0:
                 false_pos += 1
         self.index = random.randint(0, self.datapoints)
 
-        self.state = self.data.iloc[self.index, :-1].values.reshape(1, self.datasize)
-        return self.state, reward, correct, attack, correct_att, false_pos
+        self.state = self.data.iloc[self.index, :-1].values.reshape(1, self.features)
+        return self.state, reward, correct, attack, correct_att, false_pos, label
 
     def reset(self):
         self.index = random.randint(0, self.datapoints)
-        self.state = self.data.iloc[self.index, :-1].values.reshape(1, self.datasize)
+        self.state = self.data.iloc[self.index, :-1].values.reshape(1, self.features)
         return self.state
 
 

@@ -54,9 +54,16 @@ class TD3Agent:
         self.memory.append((state, action, reward))
 
     def _soft_update(self, target, source):
-        target_weights = np.array(target.get_weights())
-        source_weights = np.array(source.get_weights())
-        new_weights = self.tau * source_weights + (1 - self.tau) * target_weights
+        target_weights = target.get_weights()
+        source_weights = source.get_weights()
+
+        new_weights = []
+        for i, target_weight in enumerate(target_weights):
+            source_weight = source_weights[i]
+            new_weight = self.tau * source_weight + (1 - self.tau) * target_weight
+            new_weight = new_weight.reshape(target_weight.shape)
+            new_weights.append(new_weight)
+
         target.set_weights(new_weights)
 
     def replay(self, batch_size):
@@ -65,6 +72,7 @@ class TD3Agent:
         minibatch = random.sample(self.memory, batch_size)
 
         states = np.array([m[0] for m in minibatch])
+        states = np.squeeze(states)
         actions = np.array([m[1] for m in minibatch])
         rewards = np.array([m[2] for m in minibatch])
 
@@ -110,10 +118,17 @@ class TD3Agent:
     def act(self, state):
         state = tf.convert_to_tensor(state, dtype=tf.float32)
         action = self.actor(state)[0]
-        noise = np.clip(np.random.normal(0, self.policy_noise, size=action.shape), -self.noise_clip,
-                        self.noise_clip)
+        noise = np.random.normal(0, self.policy_noise, size=self.action_size)
         action = tf.clip_by_value(action + noise, -1, 1)
-        return np.argmax(action)
+        return action
 
     def update_explore_rate(self, epsilon):
         self.policy_noise = epsilon
+
+    def load(self, name):
+        self.model = tf.keras.models.load_model(name)
+
+    def save(self, name):
+        self.actor.save(f"models/td3models/a_{name}")
+        self.critic1.save(f"models/td3models/c1_{name}")
+        self.critic2.save(f"models/td3models/c2_{name}")

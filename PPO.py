@@ -115,9 +115,9 @@ class PPOAgent:
 
 
     def load(self, name):
-        self.actor = tf.keras.models.load_model(name, custom_objects={'_actor_loss': self._actor_loss})
-        self.critic = tf.keras.models.load_model(f"Critic_{name}")
+        self.actor = tf.keras.models.load_model(f"models/{name}", custom_objects={'_actor_loss': self._actor_loss})
+        self.critic = tf.keras.models.load_model(f"models/PPO_Critic_model/critic_{name}")
 
     def save(self, name):
-        self.actor.save(name)
-        self.critic.save(f"Critic_{name}")
+        self.actor.save(f"models/{name}")
+        self.critic.save(f"models/PPO_Critic_model/critic_{name}")
